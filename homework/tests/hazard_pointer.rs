@@ -42,11 +42,13 @@ fn counter() {
     });
     let cur = count.load(Acquire);
     // exclusive access
+    // 独家访问
     assert_eq!(unsafe { *cur }, THREADS * ITER);
     unsafe { retire(cur) };
 }
 
 // like `counter`, but trigger interesting interleaving using `sleep` and always call `collect`.
+// 像 `counter`，但使用 `sleep` 触发有趣的交错，并且总是调用 `collect`。
 #[test]
 fn counter_sleep() {
     const THREADS: usize = 4;
@@ -89,6 +91,7 @@ fn counter_sleep() {
     });
     let cur = count.load(Acquire);
     // exclusive access
+    // 独家访问
     assert_eq!(unsafe { *cur }, THREADS * ITER);
     unsafe { retire(cur) };
 }
@@ -179,12 +182,14 @@ mod sync {
                     let shield = Shield::default();
                     if shield.try_protect(local, &atomic).is_ok() {
                         // safe to deref a valid pointer via a validated shield
+                        // 通过经过验证的屏障安全地解引用一个有效指针
                         assert_eq!(unsafe { *local }, 123);
                     }
                 })
             };
 
             // unlink, retire, and collect
+            // 取消链接、退休并领取
             let local = atomic.load(Relaxed);
             atomic.store(ptr::null_mut(), Relaxed);
             unsafe { retire(local) };
@@ -205,16 +210,19 @@ mod sync {
                     let local = shield.protect(&atomic);
                     if !local.is_null() {
                         // safe to deref a valid pointer via a validated shield
+                        // 通过经过验证的屏障安全地解引用一个有效指针
                         assert_eq!(unsafe { *local }, 123);
                     }
                 })
             };
 
             // link
+            // 链接
             let local = Box::into_raw(Box::new(123));
             atomic.store(local, Release);
 
             // unlink, retire, and collect
+            // 取消链接、退休并领取
             atomic.store(ptr::null_mut(), Relaxed);
             unsafe { retire(local) };
             collect();
@@ -224,8 +232,11 @@ mod sync {
     }
 
     // Above tests can't detect the absence of release-acquire between `Shield::drop` and `collect`
+    // 上述测试无法检测 `Shield::drop` 和 `collect` 之间缺乏 release-acquire
     // for an unknown reason. So explicitly check release-acquire between `Shield::drop` and
+    // 出于未知原因。因此明确检查 `Shield::drop` 之间的release-acquire和
     // `all_hazards`.
+    // `all_hazards`。
     #[test]
     fn shield_drop_all_hazards_sync() {
         model(|| {
@@ -264,6 +275,7 @@ mod stack {
     use loom::sync::atomic::{AtomicPtr, Ordering::*};
 
     /// Treiber's lock-free stack.
+    /// Treiber 的无锁栈。
     #[derive(Debug, Default)]
     pub struct Stack<T> {
         head: AtomicPtr<Node<T>>,
@@ -343,6 +355,7 @@ mod queue {
     use loom::sync::atomic::{AtomicPtr, Ordering::*};
 
     /// Michael-Scott queue.
+    /// 迈克尔-斯科特队列。
     #[derive(Debug)]
     pub struct Queue<T> {
         head: AtomicPtr<Node<T>>,
@@ -383,8 +396,11 @@ mod queue {
             loop {
                 let tail = shield.protect(&self.tail);
                 // SAFETY
+                // 安全
                 // 1. queue's `tail` is always valid as it will be CASed with valid nodes only.
+                // 1. 队列的 `tail` 始终有效，因为它只会与有效节点进行 CAS 操作。
                 // 2. `tail` is protected & validated.
+                // 2. `tail` 已被保护和验证。
                 let tail_ref = unsafe { &*tail };
 
                 let next = tail_ref.next.load(Acquire);
@@ -414,8 +430,11 @@ mod queue {
                     continue;
                 }
                 // SAFETY:
+                // 安全：
                 // 1. queue's `head` is always valid as it will be CASed with valid nodes only.
+                // 1. 队列的 `head` 始终有效，因为它只会与有效节点进行 CAS 操作。
                 // 2. `head` is protected & validated.
+                // 2. `head` 已被保护和验证。
                 let head_ref = unsafe { &*head };
 
                 let next = head_ref.next.load(Acquire);
@@ -426,10 +445,15 @@ mod queue {
                 let next_ref = match Shield::validate(head, &self.head) {
                     Ok(_) => {
                         // SAFETY:
+                        // 安全：
                         // 1. If `next` was not null, then it must be a valid node that another
+                        // 1. 如果 `next` 不为空，那么它必须是另一个有效节点
                         //    thread has `push()`ed.
+                        // 帖子已被`push()`处理。
                         // 2. Validation: If `head` is not retired, then `next` is not retired. So
+                        // 2. 验证：如果 `head` 没有退休，那么 `next` 也没有退休。因此
                         //    re-validating `head` also validates `next.
+                        // 重新验证 `head` 同时也验证 `next。
                         unsafe { &*next }
                     }
                     Err(new) => {

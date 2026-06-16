@@ -1,4 +1,5 @@
 //! Utilities for testing
+//! 测试工具
 // <https://stackoverflow.com/a/44541071>
 
 pub mod adt;

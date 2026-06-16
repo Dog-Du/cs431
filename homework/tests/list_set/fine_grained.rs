@@ -42,6 +42,7 @@ fn log_concurrent() {
 }
 
 /// Check the consistency of iterator while other operations are running concurrently.
+/// 在其他操作并发运行时，检查迭代器的一致性。
 #[test]
 fn iter_consistent() {
     const THREADS: usize = 15;
@@ -50,6 +51,7 @@ fn iter_consistent() {
     let set = FineGrainedListSet::new();
 
     // pre-fill with even numbers
+    // 预先填充偶数
     for i in (0..100).step_by(2).rev() {
         assert!(set.insert(i));
     }
@@ -58,8 +60,10 @@ fn iter_consistent() {
     let done = AtomicBool::new(false);
     thread::scope(|s| {
         // Ensure handles lives to the end.
+        // 确保手柄始终有效。
         let mut handles = Vec::with_capacity(THREADS + 1);
         // insert or remove odd numbers
+        // 插入或删除奇数
         for _ in 0..THREADS {
             handles.push(s.spawn(|| {
                 let mut rng = rand::rng();
@@ -78,8 +82,10 @@ fn iter_consistent() {
             while !done.load(Acquire) {
                 let snapshot = set.iter().copied().collect::<Vec<_>>();
                 // sorted
+                // 已排序
                 assert!(snapshot.windows(2).all(|k| k[0] <= k[1]));
                 // even numbers are not touched
+                // 偶数不受影响
                 let snapshot = snapshot.into_iter().collect::<HashSet<_>>();
                 assert!(evens.is_subset(&snapshot));
             }

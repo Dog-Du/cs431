@@ -17,9 +17,11 @@ struct Node {
 pub struct Token(*mut CachePadded<Node>);
 
 // SAFETY: It doesn't matter if a thread used a token made by another thread.
+// 安全性：线程使用另一个线程生成的令牌没有关系。
 unsafe impl Send for Token {}
 
 /// An MCS parking lock.
+/// MCS 停车锁。
 #[derive(Debug)]
 pub struct McsParkingLock {
     tail: AtomicPtr<CachePadded<Node>>,
@@ -55,9 +57,11 @@ unsafe impl RawLock for McsParkingLock {
         }
 
         // SAFETY: See safety of McsLock::lock().
+        // 安全性：请参阅 McsLock::lock() 的安全性。
         unsafe { (*prev).next.store(node, Release) };
 
         // SAFETY: See safety of McsLock::lock().
+        // 安全性：请参阅 McsLock::lock() 的安全性。
         while unsafe { (*node).locked.load(Acquire) } {
             thread::park();
         }
@@ -76,6 +80,7 @@ unsafe impl RawLock for McsParkingLock {
                 .is_ok()
             {
                 // SAFETY: See safety of McsLock::unlock().
+                // 安全性：请参阅 McsLock::unlock() 的安全性。
                 drop(unsafe { Box::from_raw(node) });
                 return;
             }
@@ -87,11 +92,14 @@ unsafe impl RawLock for McsParkingLock {
         }
 
         // SAFETY: See safety of McsLock::unlock().
+        // 安全性：请参阅 McsLock::unlock() 的安全性。
         drop(unsafe { Box::from_raw(node) });
         let next_ref = unsafe { &*next };
 
         // It is important to clone the thread before unlocking, the next waiter,
+        // 在解锁之前克隆线程很重要，下一个等待者，
         // because then the next waiter may free `next_ref`.
+        // 因为那样下一个服务员可能会释放 `next_ref`。
         let thread = next_ref.thread.clone();
         next_ref.locked.store(false, Release);
         thread.unpark();

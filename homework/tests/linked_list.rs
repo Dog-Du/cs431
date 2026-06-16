@@ -180,6 +180,7 @@ fn test_ord() {
 
 #[test]
 // Allow for more easier fine-tuned debugging.
+// 允许更容易的精细调试。
 #[allow(clippy::neg_cmp_op_on_partial_ord)]
 fn test_ord_nan() {
     let n = list_from(&[f64::NAN]);

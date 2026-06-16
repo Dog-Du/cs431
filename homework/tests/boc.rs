@@ -1,7 +1,9 @@
 //! Modules `boc_fibonacci` and `boc_banking` are taken from <https://github.com/ic-slurp/verona-benchmarks/tree/main/savina/boc>.
+//! 模块 `boc_fibonacci` 和 `boc_banking` 取自 <https://github.com/ic-slurp/verona-benchmarks/tree/main/savina/boc>。
 
 mod boc_fibonacci {
     //! Computing fibonacci sequence using [`boc`].
+    //! 使用 [`boc`] 计算斐波那契数列。
 
     use crossbeam_channel::{Sender, bounded};
     use cs431_homework::boc::run_when;
@@ -41,6 +43,7 @@ mod boc_fibonacci {
 
 mod boc_banking {
     //! A simple transaction system using [`boc`].
+    //! 一个使用 [`boc`] 的简单交易系统。
 
     use std::thread::sleep;
     use std::time::Duration;
@@ -69,6 +72,7 @@ mod boc_banking {
         let mut rng = thread_rng();
         for _ in 0..transaction_cnt {
             // Randomly pick src and dest accounts.
+            // 随机选择源账户和目标账户。
             let src = usize::rand_gen(&mut rng) % account_cnt;
             let mut dst = usize::rand_gen(&mut rng) % account_cnt;
 
@@ -83,10 +87,12 @@ mod boc_banking {
             let c_dst = accounts[dst].clone();
 
             // FIXME: This clone and the clone in the lower `when!` seems stupid but is needed.
+            // FIXME：这个克隆以及位于下方 `when!` 的克隆看起来很愚蠢，但这是必要的。
             let finish_sender = finish_sender.clone();
             let c_remaining = c_remaining.clone();
             when!(c_src, c_dst; src, dst; {
                 // Transfer.
+                // 转移。
                 if amount <= *src {
                     *src -= amount;
                     *dst += amount;
@@ -100,6 +106,7 @@ mod boc_banking {
                 when!(c_remaining; remaining; {
                     *remaining -= 1;
                     // Tell the main thread that all transactions have finished.
+                    // 告诉主线程所有事务都已完成。
                     if *remaining == 0 {
                         finish_sender.send(()).unwrap();
                     }
@@ -113,6 +120,7 @@ mod boc_banking {
 
 mod boc_merge_sort {
     //! Merge sort using BoC.
+    //! 使用 BoC 的归并排序。
 
     use crossbeam_channel::{Sender, bounded};
     use cs431_homework::boc::{CownPtr, run_when};
@@ -131,6 +139,7 @@ mod boc_merge_sort {
         }
 
         // Recursively sort a subarray within range [from, to).
+        // 递归地对范围 [from, to) 内的子数组进行排序。
         let from = idx * step_size - n;
         let to = (idx + 1) * step_size - n;
 
@@ -148,10 +157,12 @@ mod boc_merge_sort {
                 (*content[step_size + 1] == 1) && (*content[step_size + 2] == 1);
             if !left_and_right_sorted || *content[step_size] == 1 {
                 // If both subarrays are not ready or we already sorted for this range, skip.
+                // 如果两个子数组都未准备好或我们已经对该范围排序过，跳过。
                 return;
             }
 
             // Now, merge the two subarrays.
+            // 现在，将两个子数组合并。
             let mut lo = 0;
             let mut hi = step_size / 2;
             let mut res = Vec::new();
@@ -169,22 +180,28 @@ mod boc_merge_sort {
             }
 
             // Signal that we have sorted the subarray [from, to).
+            // 表示我们已经对子数组 [from, to) 进行了排序。
             *content[step_size] = 1;
 
             // If the sorting process is completed send a signal to the main thread.
+            // 如果排序过程完成，请向主线程发送信号。
             if idx == 1 {
                 sender.send(res).unwrap();
                 return;
             }
 
             // Recursively sort the larger subarray (bottom up)
+            // 递归地对较大的子数组进行排序（自底向上）
             merge_sort_inner(idx / 2, step_size * 2, n, &boc_arr, &boc_finish, &sender);
         });
     }
 
     /// Sorts and returns a sorted version of `array`.
+    /// 对 `array` 进行排序并返回排序后的版本。
     // TODO: We could make this generic over `T : Ord + Send`, but it might also need `Default` or
+    // 待办事项：我们可以让它对 `T : Ord + Send` 通用，但它可能还需要 `Default` 或
     // usage of `MabyeUninit`.
+    // `MabyeUninit` 的使用。
     pub fn merge_sort(array: Vec<usize>) -> Vec<usize> {
         let n = array.len();
         if n == 1 {
@@ -204,12 +221,14 @@ mod boc_merge_sort {
             let finish_sender = finish_sender.clone();
             when!(c_finished; finished; {
                 // Signal that the sorting of subarray for [i, i+1) is finished.
+                // 标记子数组 [i, i 1) 的排序已完成。
                 *finished = 1;
                 merge_sort_inner((n + i) / 2, 2, n, &boc_arr_clone, &boc_finish_clone, &finish_sender);
             });
         }
 
         // Wait until sorting finishes and get the result.
+        // 等待排序完成并获取结果。
         finish_receiver.recv().unwrap()
     }
 }

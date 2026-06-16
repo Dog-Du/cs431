@@ -3,9 +3,12 @@ use std::marker::PhantomData;
 use std::{fmt, mem, ptr};
 
 /// A doubly-linked list with owned nodes.
+/// 一个具有自有节点的双链表。
 ///
 /// The `LinkedList` allows pushing and popping elements at either end
+/// `LinkedList` 允许在任一端进行元素的推入和弹出
 /// in constant time.
+/// 在恒定时间内。
 pub struct LinkedList<T> {
     head: *mut Node<T>,
     tail: *mut Node<T>,
@@ -20,12 +23,16 @@ struct Node<T> {
 }
 
 /// An iterator over the elements of a `LinkedList`.
+/// 一个 `LinkedList` 元素的迭代器。
 ///
 /// This `struct` is created by the [`iter`] method on [`LinkedList`]. See its
+/// 这个 `struct` 是通过 [`iter`] 方法在 [`LinkedList`] 上创建的。查看其
 /// documentation for more.
+/// 查看更多文档。
 ///
 /// [`iter`]: struct.LinkedList.html#method.iter
 /// [`LinkedList`]: struct.LinkedList.html
+/// [`LinkedList`]：struct.LinkedList.html
 pub struct Iter<'a, T> {
     head: *mut Node<T>,
     tail: *mut Node<T>,
@@ -46,16 +53,24 @@ impl<T> Clone for Iter<'_, T> {
 }
 
 /// A mutable iterator over the elements of a `LinkedList`.
+/// 一个可变的迭代器，用于遍历 `LinkedList` 的元素。
 ///
 /// This `struct` is created by the [`iter_mut`] method on [`LinkedList`]. See its
+/// 这个 `struct` 是通过 [`iter_mut`] 方法在 [`LinkedList`] 上创建的。查看其
 /// documentation for more.
+/// 查看更多文档。
 ///
 /// [`iter_mut`]: struct.LinkedList.html#method.iter_mut
+/// [`iter_mut`]：struct.LinkedList.html#method.iter_mut
 /// [`LinkedList`]: struct.LinkedList.html
+/// [`LinkedList`]：struct.LinkedList.html
 pub struct IterMut<'a, T> {
     // We do *not* exclusively own the entire list here, references to node's `element`
+    // 我们在这里*不*完全拥有整个列表，参考节点的 `element`
     // have been handed out by the iterator! So be careful when using this; the methods
+    // 已经被迭代器分发出去！所以在使用这个时要小心；这些方法
     // called must be aware that there can be aliasing pointers to `element`.
+    // 必须意识到可能有指向 `element` 的别名指针。
     list: &'a mut LinkedList<T>,
     head: *mut Node<T>,
     tail: *mut Node<T>,
@@ -72,12 +87,16 @@ impl<T: fmt::Debug> fmt::Debug for IterMut<'_, T> {
 }
 
 /// An owning iterator over the elements of a `LinkedList`.
+/// 一个拥有 `LinkedList` 元素的迭代器。
 ///
 /// This `struct` is created by the [`into_iter`] method on [`LinkedList`]
+/// 这个 `struct` 是通过 [`into_iter`] 方法在 [`LinkedList`] 创建的
 /// (provided by the `IntoIterator` trait). See its documentation for more.
+/// (由 `IntoIterator` 特性提供)。请参阅其文档以了解更多信息。
 ///
 /// [`into_iter`]: struct.LinkedList.html#method.into_iter
 /// [`LinkedList`]: struct.LinkedList.html
+/// [`LinkedList`]：struct.LinkedList.html
 #[derive(Clone)]
 pub struct IntoIter<T> {
     list: LinkedList<T>,
@@ -105,6 +124,7 @@ impl<T> Node<T> {
 
 impl<T> LinkedList<T> {
     /// Adds the given node to the front of the list.
+    /// 将给定的节点添加到列表的前面。
     #[inline]
     fn push_front_node(&mut self, mut node: Node<T>) {
         node.next = self.head;
@@ -122,6 +142,7 @@ impl<T> LinkedList<T> {
     }
 
     /// Removes and returns the node at the front of the list.
+    /// 移除并返回列表前端的节点。
     #[inline]
     fn pop_front_node(&mut self) -> Option<Node<T>> {
         if self.head.is_null() {
@@ -142,12 +163,14 @@ impl<T> LinkedList<T> {
     }
 
     /// Adds the given node to the back of the list.
+    /// 将给定的节点添加到列表的末尾。
     #[inline]
     fn push_back_node(&mut self, mut node: Node<T>) {
         todo!()
     }
 
     /// Removes and returns the node at the back of the list.
+    /// 移除并返回列表末尾的节点。
     #[inline]
     fn pop_back_node(&mut self) -> Option<Node<T>> {
         todo!()
@@ -156,6 +179,7 @@ impl<T> LinkedList<T> {
 
 impl<T> Default for LinkedList<T> {
     /// Creates an empty `LinkedList<T>`.
+    /// 创建一个空的 `LinkedList<T>`。
     #[inline]
     fn default() -> Self {
         Self::new()
@@ -164,8 +188,10 @@ impl<T> Default for LinkedList<T> {
 
 impl<T> LinkedList<T> {
     /// Creates an empty `LinkedList`.
+    /// 创建一个空的 `LinkedList`。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -183,13 +209,18 @@ impl<T> LinkedList<T> {
     }
 
     /// Moves all elements from `other` to the end of the list.
+    /// 将所有元素从 `other` 移动到列表的末尾。
     ///
     /// This reuses all the nodes from `other` and moves them into `self`. After
+    /// 这会重用 `other` 的所有节点，并将它们移动到 `self`。之后
     /// this operation, `other` becomes empty.
+    /// 这个操作后，`other` 会变为空。
     ///
     /// This operation should compute in `O(1)` time and `O(1)` memory.
+    /// 此操作应在 `O(1)` 时间和 `O(1)` 内存中计算。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -228,13 +259,18 @@ impl<T> LinkedList<T> {
     }
 
     /// Moves all elements from `other` to the beginning of the list.
+    /// 将所有元素从 `other` 移动到列表的开头。
     ///
     /// This reuses all the nodes from `other` and moves them into `self`. After
+    /// 这会重用 `other` 的所有节点，并将它们移动到 `self`。之后
     /// this operation, `other` becomes empty.
+    /// 这个操作后，`other` 会变为空。
     ///
     /// This operation should compute in `O(1)` time and `O(1)` memory.
+    /// 此操作应在 `O(1)` 时间和 `O(1)` 内存中计算。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -261,8 +297,10 @@ impl<T> LinkedList<T> {
     }
 
     /// Provides a forward iterator.
+    /// 提供一个前向迭代器。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -290,8 +328,10 @@ impl<T> LinkedList<T> {
     }
 
     /// Provides a forward iterator with mutable references.
+    /// 提供一个带有可变引用的前向迭代器。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -323,10 +363,13 @@ impl<T> LinkedList<T> {
     }
 
     /// Returns `true` if the `LinkedList` is empty.
+    /// 如果 `LinkedList` 为空，则返回 `true`。
     ///
     /// This operation should compute in `O(1)` time.
+    /// 此操作应在 `O(1)` 时间内完成。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -343,10 +386,13 @@ impl<T> LinkedList<T> {
     }
 
     /// Returns the length of the `LinkedList`.
+    /// 返回 `LinkedList` 的长度。
     ///
     /// This operation should compute in `O(1)` time.
+    /// 此操作应在 `O(1)` 时间内完成。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -368,10 +414,13 @@ impl<T> LinkedList<T> {
     }
 
     /// Removes all elements from the `LinkedList`.
+    /// 从 `LinkedList` 中移除所有元素。
     ///
     /// This operation should compute in `O(n)` time.
+    /// 此操作应在 `O(n)` 时间内完成。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -393,9 +442,12 @@ impl<T> LinkedList<T> {
     }
 
     /// Returns `true` if the `LinkedList` contains an element equal to the
+    /// 如果 `LinkedList` 包含等于 的元素，则返回 `true`
     /// given value.
+    /// 给定值。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -417,9 +469,12 @@ impl<T> LinkedList<T> {
     }
 
     /// Provides a reference to the front element, or `None` if the list is
+    /// 提供对前端元素的引用，如果列表为空，则提供 `None`
     /// empty.
+    /// 空的。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -436,9 +491,12 @@ impl<T> LinkedList<T> {
     }
 
     /// Provides a mutable reference to the front element, or `None` if the list
+    /// 提供对前端元素的可变引用，如果列表则为 `None`
     /// is empty.
+    /// 是空的。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -461,9 +519,12 @@ impl<T> LinkedList<T> {
     }
 
     /// Provides a reference to the back element, or `None` if the list is
+    /// 提供对后部元素的引用，如果列表为空，则为 `None`
     /// empty.
+    /// 空的。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -480,9 +541,12 @@ impl<T> LinkedList<T> {
     }
 
     /// Provides a mutable reference to the back element, or `None` if the list
+    /// 提供对最后一个元素的可变引用，如果列表为 `None`
     /// is empty.
+    /// 是空的。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -505,10 +569,13 @@ impl<T> LinkedList<T> {
     }
 
     /// Adds an element first in the list.
+    /// 将一个元素添加到列表的开头。
     ///
     /// This operation should compute in `O(1)` time.
+    /// 此操作应在 `O(1)` 时间内完成。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -526,11 +593,15 @@ impl<T> LinkedList<T> {
     }
 
     /// Removes the first element and returns it, or `None` if the list is
+    /// 移除第一个元素并返回它，如果列表为空则返回 `None`
     /// empty.
+    /// 空的。
     ///
     /// This operation should compute in `O(1)` time.
+    /// 此操作应在 `O(1)` 时间内完成。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -549,10 +620,13 @@ impl<T> LinkedList<T> {
     }
 
     /// Appends an element to the back of a list.
+    /// 将一个元素添加到列表的末尾。
     ///
     /// This operation should compute in `O(1)` time.
+    /// 此操作应在 `O(1)` 时间内完成。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -567,11 +641,15 @@ impl<T> LinkedList<T> {
     }
 
     /// Removes the last element from a list and returns it, or `None` if
+    /// 从列表中移除最后一个元素并返回它，或者如果没有，则返回 `None`
     /// it is empty.
+    /// 它是空的。
     ///
     /// This operation should compute in `O(1)` time.
+    /// 此操作应在 `O(1)` 时间内完成。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -643,9 +721,12 @@ impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
 
 impl<T> IterMut<'_, T> {
     /// Inserts the given element just after the element most recently returned by `.next()`.
+    /// 将给定元素插入到最近由 `.next()` 返回的元素之后。
     /// The inserted element does not appear in the iteration.
+    /// 插入的元素在迭代中没有出现。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -670,8 +751,10 @@ impl<T> IterMut<'_, T> {
     }
 
     /// Provides a reference to the next element, without changing the iterator.
+    /// 提供对下一个元素的引用，而不改变迭代器。
     ///
     /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use cs431_homework::LinkedList;
@@ -719,6 +802,7 @@ impl<T> IntoIterator for LinkedList<T> {
     type IntoIter = IntoIter<T>;
 
     /// Consumes the list into an iterator yielding elements by value.
+    /// 将列表消耗为一个迭代器，通过值生成元素。
     #[inline]
     fn into_iter(self) -> IntoIter<T> {
         IntoIter { list: self }

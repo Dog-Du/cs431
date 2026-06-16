@@ -2,6 +2,7 @@ use cs431_homework::test::loom::sync::atomic::AtomicUsize;
 use cs431_homework::test::loom::sync::atomic::Ordering::Relaxed;
 
 /// Used for testing if `T` of `Arc<T>` is dropped exactly once.
+/// 用于测试 `Arc<T>` 的 `T` 是否恰好丢弃一次。
 struct Canary(*const AtomicUsize);
 
 unsafe impl Send for Canary {}
@@ -60,6 +61,7 @@ mod basic {
         assert!(78 == *cow2);
 
         // none should point to the same backing memory
+        // 都不应该指向同一宿主内存
         assert!(*cow0 != *cow1);
         assert!(*cow0 != *cow2);
         assert!(*cow1 != *cow2);
@@ -81,7 +83,9 @@ mod basic {
         assert!(75 == *cow2);
 
         // cow1 and cow2 should share the same contents
+        // cow1 和 cow2 应该共享相同的内容
         // cow0 should have a unique reference
+        // cow0 应该有一个唯一的参考
         assert!(*cow0 != *cow1);
         assert!(*cow0 != *cow2);
         assert!(*cow1 == *cow2);
@@ -174,6 +178,7 @@ mod correctness {
 
     #[test]
     /// value:=123 → count:=1 → get_mut success
+    /// value:=123 → count:=1 → get_mut 成功
     fn get_mut_sync() {
         model(|| {
             let mut value = Arc::new(AtomicUsize::new(0));
@@ -191,6 +196,7 @@ mod correctness {
 
     #[test]
     /// value:=123 → count:=1 → try_unwrap success
+    /// value:=123 → count:=1 → try_unwrap 成功
     fn try_unwrap_sync() {
         model(|| {
             let value = Arc::new(AtomicUsize::new(0));
@@ -208,6 +214,7 @@ mod correctness {
 
     #[test]
     /// accesses → last drop → data drop/dealloc
+    /// 访问 → 最后一次丢弃 → 数据丢弃/释放
     fn drop_sync() {
         struct Counter(AtomicUsize);
 
@@ -229,6 +236,7 @@ mod correctness {
 
     #[test]
     /// Resistance against arbitrary interleaving of instructions in `clone` and `drop`.
+    /// 抵抗 `clone` 和 `drop` 中指令的任意交错。
     fn clone_drop_atomic() {
         model(|| {
             let canary = AtomicUsize::new(0);

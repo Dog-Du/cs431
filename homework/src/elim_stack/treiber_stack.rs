@@ -14,12 +14,15 @@ pub struct Node<T> {
 }
 
 // Any particular `T` should never be accessed concurrently, so no need for `Sync`.
+// 任何特定的 `T` 都不应同时访问，因此不需要 `Sync`。
 unsafe impl<T: Send> Send for Node<T> {}
 unsafe impl<T: Send> Sync for Node<T> {}
 
 /// Treiber's lock-free stack.
+/// Treiber 的无锁栈。
 ///
 /// Usable with any number of producers and consumers.
+/// 可用于任意数量的生产者和消费者。
 #[derive(Debug)]
 pub struct TreiberStack<T> {
     head: Atomic<Node<T>>,

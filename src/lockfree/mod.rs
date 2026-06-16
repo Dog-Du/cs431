@@ -1,4 +1,5 @@
 //! Lock-free data structures.
+//! 无锁数据结构。
 
 pub mod list;
 mod queue;

@@ -6,6 +6,7 @@ use crossbeam_utils::Backoff;
 use crate::lock::*;
 
 /// A ticket lock.
+/// 票锁。
 #[derive(Debug)]
 pub struct TicketLock {
     curr: AtomicUsize,

@@ -1,4 +1,5 @@
 //! Hello server with a cache.
+//! 你好，有缓存的服务器。
 #![deny(unsafe_code)]
 
 mod cache;

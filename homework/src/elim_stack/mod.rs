@@ -1,10 +1,12 @@
 //! Elimination-backoff stack.
+//! 消除退让栈
 
 mod base;
 mod elim;
 mod treiber_stack;
 
 /// Elimination-backoff stack based on Treiber's stack.
+/// 基于特雷伯栈的消除回退栈。
 pub type ElimStack<T> = base::ElimStack<T, treiber_stack::TreiberStack<T>>;
 
 #[cfg(test)]

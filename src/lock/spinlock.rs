@@ -6,6 +6,7 @@ use crossbeam_utils::Backoff;
 use crate::lock::*;
 
 /// A spin lock.
+/// 自旋锁。
 #[derive(Debug)]
 pub struct SpinLock {
     inner: AtomicBool,

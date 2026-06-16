@@ -1,4 +1,5 @@
 //! Testing utilities for map types.
+//! 用于映射类型的测试工具。
 
 use core::fmt::Debug;
 use core::hash::Hash;
@@ -13,7 +14,9 @@ use crate::ConcurrentMap;
 use crate::test::RandGen;
 
 /// Runs many operations in a single thread and tests if it works like a map data structure using
+/// 在单个线程中运行许多操作，并测试它是否像使用映射数据结构一样工作
 /// `std::collections::HashMap` as reference.
+/// 以 `std::collections::HashMap` 作为参考。
 pub fn stress_sequential<
     K: Clone + Debug + Eq + Hash + RandGen,
     V: Clone + Debug + Eq + RandGen,
@@ -104,6 +107,7 @@ pub fn stress_sequential<
 }
 
 /// Runs random lookup operations concurrently.
+/// 并发运行随机查找操作。
 pub fn lookup_concurrent<
     K: Clone + Debug + Eq + Hash + RandGen + Sync,
     V: Clone + Debug + Eq + RandGen + Sync,
@@ -150,6 +154,7 @@ pub fn lookup_concurrent<
 }
 
 /// Runs random insert operations concurrently.
+/// 同时运行随机插入操作。
 pub fn insert_concurrent<
     K: Clone + Debug + Eq + Hash + RandGen,
     V: Clone + Debug + Eq + RandGen,
@@ -187,8 +192,10 @@ const OPS: [Ops; 3] = [Ops::Lookup, Ops::Insert, Ops::Delete];
 
 #[derive(Clone)]
 /// Successful operations are logged as `Some`. Failed operations are `None`.
+/// 成功的操作记录为 `Some`。失败的操作为 `None`。
 ///
 /// We currently only make use of the `Some` variant for `result`.
+/// 我们目前仅将 `Some` 变体用于 `result`。
 enum Log<K, V> {
     Lookup { key: K, result: Option<V> },
     Insert { key: K, result: Option<V> },
@@ -204,6 +211,7 @@ impl<K, V> Log<K, V> {
 }
 
 /// Randomly runs many operations concurrently.
+/// 随机同时运行许多操作。
 pub fn stress_concurrent<
     K: Debug + Eq + RandGen,
     V: Debug + Eq + RandGen,
@@ -286,8 +294,11 @@ fn assert_logs_consistent<K: Debug + Eq + Hash, V: Debug + Eq + Hash>(logs: &[Lo
 }
 
 /// Randomly runs many operations concurrently and logs the operations & results per thread. Then
+/// 随机地并发运行许多操作，并记录每个线程的操作和结果。然后
 /// checks the consistency of the log. For example, if the key `k` was successfully deleted twice,
+/// 检查日志的一致性。例如，如果键 `k` 被成功删除了两次，
 /// then `k` must have been inserted at least twice.
+/// 那么 `k` 至少必须被插入了两次。
 pub fn log_concurrent<
     K: Clone + Debug + Eq + Hash + RandGen + Send,
     V: Clone + Debug + Eq + Hash + RandGen + Send,

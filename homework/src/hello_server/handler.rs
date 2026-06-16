@@ -1,4 +1,5 @@
 //! Request handler with a cache.
+//! 带缓存的请求处理器。
 
 use std::io::prelude::*;
 use std::net::TcpStream;
@@ -12,6 +13,7 @@ use super::cache::Cache;
 use super::statistics::Report;
 
 /// Computes the result for the given key. So expensive, much wow.
+/// 计算给定键的结果。如此昂贵，非常惊讶。
 fn very_expensive_computation_that_takes_a_few_seconds(key: String) -> String {
     println!("[handler] doing computation for key: {key}");
     thread::sleep(Duration::from_secs(3));
@@ -19,6 +21,7 @@ fn very_expensive_computation_that_takes_a_few_seconds(key: String) -> String {
 }
 
 /// Hello handler with a cache.
+/// 你好，带缓存的处理器。
 #[derive(Debug, Default, Clone)]
 pub struct Handler {
     cache: Arc<Cache<String, String>>,
@@ -49,6 +52,7 @@ impl Handler {
 </html>";
 
     /// Process the request and generate report.
+    /// 处理请求并生成报告。
     pub fn handle_conn(&self, request_id: usize, mut stream: TcpStream) -> Report {
         let mut buf = [0; 512];
         let _ = stream.read(&mut buf).unwrap();
@@ -61,6 +65,7 @@ impl Handler {
             .and_then(|cap| cap.name("key"))
             .map(|key| String::from_utf8_lossy(key.as_bytes()));
         // TODO: Might be better to just change the strings to not have "{" and "}" in them.
+        // 待办：可能最好只是将字符串更改为不包含“{”和“}”。
         #[allow(clippy::literal_string_with_formatting_args)]
         let resp = if let Some(ref key) = key {
             let result = self.cache.get_or_insert_with(

@@ -15,9 +15,11 @@ struct Node {
 pub struct Token(*mut CachePadded<Node>);
 
 // SAFETY: It doesn't matter if a thread used a token made by another thread.
+// 安全性：线程使用另一个线程生成的令牌没有关系。
 unsafe impl Send for Token {}
 
 /// An MCS lock.
+/// MCS锁。
 #[derive(Debug)]
 pub struct McsLock {
     tail: AtomicPtr<CachePadded<Node>>,
@@ -52,13 +54,18 @@ unsafe impl RawLock for McsLock {
         }
 
         // SAFETY: `prev` is valid, so is not the initial pointer. Hence, it is a pointer from
+        // 安全性：`prev` 是有效的，但不是初始指针。因此，它是一个指向
         // `swap()` by another thread's `lock()`, and that thread guarantees that `prev` will not be
+        // `swap()` 通过另一个线程的 `lock()`，并且该线程保证 `prev` 不会发生
         // freed until this store is complete.
+        // 直到这家商店完成之前自由。
         unsafe { (*prev).next.store(node, Release) };
 
         let backoff = Backoff::new();
         // SAFETY: `node` was made valid above. Since other threads will not free `node`, it still
+        // 安全性：`node` 已在上文被设为有效。由于其他线程不会释放 `node`，它仍然
         // points to valid memory.
+        // 指向有效内存。
         while unsafe { (*node).locked.load(Acquire) } {
             backoff.snooze();
         }
@@ -77,7 +84,9 @@ unsafe impl RawLock for McsLock {
                 .is_ok()
             {
                 // SAFETY: Since `node` was the `tail`, there is no other thread blocked by this
+                // 安全性：由于 `node` 是 `tail`，因此没有其他线程被此阻塞
                 // lock. Hence we have unique access to it.
+                // 锁。因此我们对它有唯一的访问权限。
                 drop(unsafe { Box::from_raw(node) });
                 return;
             }
@@ -89,7 +98,9 @@ unsafe impl RawLock for McsLock {
         }
 
         // SAFETY: Since `next` is not null, the thread that made `next` has finished access to
+        // 安全性：由于 `next` 非空，创建 `next` 的线程已经完成访问
         // `node`, hence we have unique access to it.
+        // `node`，因此我们拥有对它的独特访问权限。
         drop(unsafe { Box::from_raw(node) });
         unsafe { (*next).locked.store(false, Release) };
     }

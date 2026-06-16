@@ -28,6 +28,7 @@ fn thread_pool_parallel() {
 }
 
 // Run jobs that take NUM_JOBS milliseconds as a whole.
+// 运行总共耗时 NUM_JOBS 毫秒的任务。
 fn run_jobs(pool: &ThreadPool, counter: &Arc<AtomicUsize>) {
     for _ in 0..NUM_JOBS {
         let counter = counter.clone();
@@ -39,6 +40,7 @@ fn run_jobs(pool: &ThreadPool, counter: &Arc<AtomicUsize>) {
 }
 
 /// `join` blocks until all jobs are finished.
+/// `join` 会阻塞，直到所有任务完成。
 #[test]
 fn thread_pool_join_block() {
     let pool = ThreadPool::new(NUM_THREADS);
@@ -49,6 +51,7 @@ fn thread_pool_join_block() {
 }
 
 /// `drop` blocks until all jobs are finished.
+/// `drop` 会阻塞，直到所有任务完成。
 #[test]
 fn thread_pool_drop_block() {
     let pool = ThreadPool::new(NUM_THREADS);
@@ -59,7 +62,9 @@ fn thread_pool_drop_block() {
 }
 
 /// This indirectly tests if the worker threads' `JoinHandle`s are joined when the pool is
+/// 这间接测试了当线程池运行时，工作线程的 `JoinHandle` 是否被连接
 /// dropped.
+/// 掉了。
 #[test]
 #[should_panic]
 fn thread_pool_drop_propagate_panic() {

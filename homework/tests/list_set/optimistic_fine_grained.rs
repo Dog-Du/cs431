@@ -25,6 +25,7 @@ fn smoke() {
 }
 
 /// Read should not block other operations.
+/// 读取不应阻塞其他操作。
 #[test]
 fn read_no_block() {
     let set = &OptimisticFineGrainedListSet::new();
@@ -52,6 +53,7 @@ fn read_no_block() {
 }
 
 /// Cursor should be invalidated when necessary.
+/// cursor在必要时应被作废。
 #[test]
 fn iter_invalidate_end() {
     let set = OptimisticFineGrainedListSet::new();
@@ -66,6 +68,7 @@ fn iter_invalidate_end() {
 }
 
 /// Cursor should be invalidated when necessary.
+/// cursor在必要时应被作废。
 #[test]
 fn iter_invalidate_deleted() {
     let set = OptimisticFineGrainedListSet::new();
@@ -101,6 +104,7 @@ fn log_concurrent() {
 }
 
 /// Checks the consistency of the iterator while other operations are running concurrently.
+/// 在其他操作并发运行时，检查迭代器的一致性。
 #[test]
 fn iter_consistent() {
     const THREADS: usize = if cfg!(sanitize = "thread") { 3 } else { 15 };
@@ -109,6 +113,7 @@ fn iter_consistent() {
     let set = OptimisticFineGrainedListSet::new();
 
     // pre-fill with even numbers
+    // 预先填充偶数
     for i in (0..100).step_by(2).rev() {
         assert!(set.insert(i));
     }
@@ -121,8 +126,10 @@ fn iter_consistent() {
     let done = AtomicBool::new(false);
     thread::scope(|s| {
         // Ensure handles lives to the end.
+        // 确保手柄始终有效。
         let mut handles = Vec::with_capacity(THREADS + 1);
         // Inserts or removes odd numbers.
+        // 插入或移除奇数。
         for _ in 0..THREADS {
             handles.push(s.spawn(|| {
                 let mut rng = rand::rng();
@@ -135,10 +142,12 @@ fn iter_consistent() {
                     }
                 }
                 // TODO: Ideally, should be per-thread variable?
+                // 待办：理想情况下，应该是每线程变量吗？
                 done.store(true, Release);
             }));
         }
         // Checks iterator consistency.
+        // 检查迭代器的一致性。
         handles.push(s.spawn(|| {
             while !done.load(Acquire) {
                 let mut snapshot = Vec::new();
@@ -149,6 +158,7 @@ fn iter_consistent() {
                     }
                 }
                 // Sorted
+                // 已排序
                 assert!(snapshot.windows(2).all(|k| k[0] <= k[1]));
                 let max = snapshot.last().copied().unwrap_or(0);
                 let evens = evens
@@ -157,6 +167,7 @@ fn iter_consistent() {
                     .filter(|&x| x <= max)
                     .collect::<HashSet<_>>();
                 // Even numbers are not touched.
+                // 偶数不被触碰。
                 let snapshot = snapshot.into_iter().collect::<HashSet<_>>();
                 assert!(evens.is_subset(&snapshot));
             }

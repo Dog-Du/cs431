@@ -1,8 +1,10 @@
 //! Homeworks
+//! 作业s
 
 #![warn(missing_docs, missing_debug_implementations, unreachable_pub)]
 #![allow(clippy::result_unit_err)]
 // Allow lints for homework.
+// 允许作业的 lint 检查。
 #![allow(dead_code, unused_variables, unused_imports, unused_mut)]
 #![deny(unsafe_op_in_unsafe_fn, warnings)]
 
