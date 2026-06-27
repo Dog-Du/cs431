@@ -1,6 +1,8 @@
 //! Thread pool that joins all thread when dropped.
 //! 线程池在被丢弃时会等待所有线程完成。
 
+use core::pat::RangePattern;
+use std::ops::{Add, Sub};
 // NOTE: Crossbeam channels are MPMC, which means that you don't need to wrap the receiver in
 // 注意：Crossbeam 通道是 MPMC，这意味着你不需要将接收器包装在
 // Arc<Mutex<..>>. Just clone the receiver and give it to each worker thread.
@@ -9,6 +11,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 use crossbeam_channel::{Sender, unbounded};
+use crossbeam_epoch::Pointable;
 
 struct Job(Box<dyn FnOnce() + Send + 'static>);
 
@@ -27,7 +30,9 @@ impl Drop for Worker {
     /// NOTE: The thread is detached if not `join`ed explicitly.
     /// 注意：如果没有被明确 `join`，线程将被分离。
     fn drop(&mut self) {
-        todo!()
+        if let Some(t) = self.thread.take() {
+            t.join().unwrap()
+        }
     }
 }
 
@@ -45,13 +50,14 @@ impl ThreadPoolInner {
     /// Increment the job count.
     /// 增加工作数量。
     fn start_job(&self) {
-        todo!()
+        self.job_count.lock().unwrap().add(1);
     }
 
     /// Decrement the job count.
     /// 减少作业数量。
     fn finish_job(&self) {
-        todo!()
+        self.job_count.lock().unwrap().sub(1);
+        self.empty_condvar.notify_one();
     }
 
     /// Wait until the job count becomes 0.
@@ -62,7 +68,15 @@ impl ThreadPoolInner {
     /// not care about that in this homework.
     /// 在这个作业中不在乎那个。
     fn wait_empty(&self) {
-        todo!()
+        loop {
+            let guard = self
+                .empty_condvar
+                .wait(self.job_count.lock().unwrap())
+                .unwrap();
+            if *guard == 0 {
+                break;
+            }
+        }
     }
 }
 
@@ -86,8 +100,27 @@ impl ThreadPool {
     /// 如果 `size` 为 0，则会引发panic。
     pub fn new(size: usize) -> Self {
         assert!(size > 0);
+        let (sender, receiver) = unbounded();
+        let mut ret = Self {
+            _workers: Vec::new(),
+            job_sender: Some(sender),
+            pool_inner: Arc::new(ThreadPoolInner::default()),
+        };
 
-        todo!()
+        for i in 0..size {
+            let receiver = receiver.clone();
+            ret._workers.push(Worker {
+                _id: i,
+                thread: Some(thread::spawn(move || -> () {
+                    for job in receiver.into_iter() {
+                        
+                    }
+                    ()
+                })),
+            });
+        }
+
+        ret
     }
 
     /// Execute a new job in the thread pool.
@@ -96,7 +129,7 @@ impl ThreadPool {
     where
         F: FnOnce() + Send + 'static,
     {
-        todo!()
+        self.job_sender.unwrap().send().unwrap();
     }
 
     /// Block the current thread until all jobs in the pool have been executed.
@@ -105,7 +138,7 @@ impl ThreadPool {
     /// NOTE: This method has nothing to do with `JoinHandle::join`.
     /// 注意：此方法与 `JoinHandle::join` 无关。
     pub fn join(&self) {
-        todo!()
+        self.pool_inner.wait_empty();
     }
 }
 
@@ -115,6 +148,6 @@ impl Drop for ThreadPool {
     /// then this function should panic too.
     /// 那么这个函数也应该发生panic。
     fn drop(&mut self) {
-        todo!()
+        self._workers.drain(..);
     }
 }
