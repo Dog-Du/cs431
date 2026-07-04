@@ -3,6 +3,7 @@
 
 use std::collections::hash_map::{Entry, HashMap};
 use std::hash::Hash;
+use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 
 /// Cache that remembers the result for each key.
@@ -13,7 +14,7 @@ pub struct Cache<K, V> {
     // 待办！这是一个示例缓存类型。构建你自己的满足要求的缓存类型
     // specification for `get_or_insert_with`.
     // `get_or_insert_with`的规格。
-    inner: Mutex<HashMap<K, V>>,
+    inner: Mutex<HashMap<K, Arc<RwLock<Option<V>>>>>,
 }
 
 impl<K, V> Default for Cache<K, V> {
@@ -49,11 +50,26 @@ impl<K: Eq + Hash + Clone, V: Clone> Cache<K, V> {
     ///
     /// [`Entry`]: https://doc.rust-lang.org/stable/std/collections/hash_map/struct.HashMap.html#method.entry
     pub fn get_or_insert_with<F: FnOnce(K) -> V>(&self, key: K, f: F) -> V {
-        if let Some(value) = self.inner.lock().unwrap().get(&key) {
-            value.clone()
-        } else {
-            let value = f(key.clone());
-            self.inner.lock().unwrap().entry(key).or_insert(value).clone()
+        let entry = self
+            .inner
+            .lock()
+            .unwrap()
+            .entry(key.clone())
+            .or_insert_with(|| Arc::new(RwLock::new(None)))
+            // or_insert_with 只在需要插入的时候才构造，如果使用 or_insert，那么每次都会构造
+            .clone(); // clone 是为了让用 Arc 来摆脱 HashMap 的生命周期。
+
+        if let Some(value_r) = &*entry.read().unwrap() {
+            return value_r.clone();
         }
+
+        let mut write_guard = entry.write().unwrap();
+        // double check
+        if let Some(value) = &*write_guard {
+            return value.clone();
+        }
+        let value = f(key);
+        *write_guard = Some(value.clone());
+        value
     }
 }

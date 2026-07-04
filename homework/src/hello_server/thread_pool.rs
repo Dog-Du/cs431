@@ -1,7 +1,6 @@
 //! Thread pool that joins all thread when dropped.
 //! 线程池在被丢弃时会等待所有线程完成。
 
-use core::pat::RangePattern;
 use std::ops::{Add, Sub};
 // NOTE: Crossbeam channels are MPMC, which means that you don't need to wrap the receiver in
 // 注意：Crossbeam 通道是 MPMC，这意味着你不需要将接收器包装在
@@ -50,13 +49,13 @@ impl ThreadPoolInner {
     /// Increment the job count.
     /// 增加工作数量。
     fn start_job(&self) {
-        self.job_count.lock().unwrap().add(1);
+        let _ = self.job_count.lock().unwrap().add(1);
     }
 
     /// Decrement the job count.
     /// 减少作业数量。
     fn finish_job(&self) {
-        self.job_count.lock().unwrap().sub(1);
+        let _ = self.job_count.lock().unwrap().sub(1);
         self.empty_condvar.notify_one();
     }
 
@@ -113,7 +112,8 @@ impl ThreadPool {
                 _id: i,
                 thread: Some(thread::spawn(move || -> () {
                     for job in receiver.into_iter() {
-                        
+                        let Job(f) = job;
+                        f();
                     }
                     ()
                 })),
@@ -129,7 +129,11 @@ impl ThreadPool {
     where
         F: FnOnce() + Send + 'static,
     {
-        self.job_sender.unwrap().send().unwrap();
+        self.job_sender
+            .as_ref()
+            .unwrap()
+            .send(Job(Box::new(f)))
+            .unwrap();
     }
 
     /// Block the current thread until all jobs in the pool have been executed.
