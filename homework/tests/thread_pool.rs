@@ -1,13 +1,13 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread::sleep;
 use std::time::Duration;
 
-use crossbeam_channel::bounded;
+use crossbeam_channel::{bounded, unbounded};
 use cs431_homework::hello_server::ThreadPool;
 
 const NUM_THREADS: usize = 4;
-const NUM_JOBS: usize = 1024;
+const NUM_JOBS: usize = 10240;
 
 #[test]
 fn thread_pool_parallel() {
@@ -59,6 +59,29 @@ fn thread_pool_drop_block() {
     run_jobs(&pool, &counter);
     drop(pool);
     assert_eq!(counter.load(Ordering::Relaxed), NUM_JOBS);
+}
+
+#[test]
+fn thread_pool_join_waits_for_queued_jobs() {
+    for i in 0..10000 {
+        let pool = ThreadPool::new(1);
+        pool.execute(|| {
+            sleep(Duration::from_millis(1));
+        });
+
+        let bool_handler = Arc::new(AtomicBool::new(false));
+        let bool_handler_clone = Arc::clone(&bool_handler);
+        pool.execute(move || {
+            bool_handler_clone.store(true, Ordering::SeqCst);
+        });
+
+        pool.join();
+        assert!(
+            bool_handler.load(Ordering::SeqCst),
+            "join returned before job completion (iteration {})",
+            i
+        );
+    }
 }
 
 /// This indirectly tests if the worker threads' `JoinHandle`s are joined when the pool is

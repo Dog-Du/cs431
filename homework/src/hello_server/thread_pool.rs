@@ -1,16 +1,15 @@
 //! Thread pool that joins all thread when dropped.
 //! 线程池在被丢弃时会等待所有线程完成。
 
-use std::ops::{Add, Sub};
+use std::sync::atomic::AtomicI64;
 // NOTE: Crossbeam channels are MPMC, which means that you don't need to wrap the receiver in
 // 注意：Crossbeam 通道是 MPMC，这意味着你不需要将接收器包装在
 // Arc<Mutex<..>>. Just clone the receiver and give it to each worker thread.
 // Arc<Mutex<..>>。只需克隆接收器并把它分配给每个工作线程。
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, atomic};
 use std::thread;
 
 use crossbeam_channel::{Sender, unbounded};
-use crossbeam_epoch::Pointable;
 
 struct Job(Box<dyn FnOnce() + Send + 'static>);
 
@@ -42,6 +41,7 @@ impl Drop for Worker {
 #[derive(Debug, Default)]
 struct ThreadPoolInner {
     job_count: Mutex<usize>,
+    waiter_count: AtomicI64,
     empty_condvar: Condvar,
 }
 
@@ -49,14 +49,17 @@ impl ThreadPoolInner {
     /// Increment the job count.
     /// 增加工作数量。
     fn start_job(&self) {
-        let _ = self.job_count.lock().unwrap().add(1);
+        *self.job_count.lock().unwrap() += 1;
     }
 
     /// Decrement the job count.
     /// 减少作业数量。
     fn finish_job(&self) {
-        let _ = self.job_count.lock().unwrap().sub(1);
-        self.empty_condvar.notify_one();
+        let mut guard = self.job_count.lock().unwrap();
+        *guard -= 1;
+        if *guard == 0 && self.waiter_count.load(atomic::Ordering::SeqCst) != 0 {
+            self.empty_condvar.notify_all();
+        }
     }
 
     /// Wait until the job count becomes 0.
@@ -67,15 +70,29 @@ impl ThreadPoolInner {
     /// not care about that in this homework.
     /// 在这个作业中不在乎那个。
     fn wait_empty(&self) {
-        loop {
-            let guard = self
-                .empty_condvar
-                .wait(self.job_count.lock().unwrap())
-                .unwrap();
-            if *guard == 0 {
-                break;
-            }
+        self.waiter_count.fetch_add(1, atomic::Ordering::SeqCst);
+        let mut job_count_guard = self.job_count.lock().unwrap();
+        while *job_count_guard != 0 {
+            job_count_guard = self.empty_condvar.wait(job_count_guard).unwrap();
         }
+        self.waiter_count.fetch_sub(1, atomic::Ordering::SeqCst);
+    }
+}
+
+struct JobCountDropper {
+    pool_inner: Arc<ThreadPoolInner>,
+}
+
+impl JobCountDropper {
+    fn new(pool_inner: Arc<ThreadPoolInner>) -> Self {
+        pool_inner.start_job();
+        Self { pool_inner }
+    }
+}
+
+impl Drop for JobCountDropper {
+    fn drop(&mut self) {
+        self.pool_inner.finish_job();
     }
 }
 
@@ -100,27 +117,27 @@ impl ThreadPool {
     pub fn new(size: usize) -> Self {
         assert!(size > 0);
         let (sender, receiver) = unbounded();
-        let mut ret = Self {
-            _workers: Vec::new(),
-            job_sender: Some(sender),
-            pool_inner: Arc::new(ThreadPoolInner::default()),
-        };
+        let pool_inner = Arc::new(ThreadPoolInner::default());
+        let mut works = Vec::new();
 
         for i in 0..size {
             let receiver = receiver.clone();
-            ret._workers.push(Worker {
+            works.push(Worker {
                 _id: i,
-                thread: Some(thread::spawn(move || -> () {
+                thread: Some(thread::spawn(move || {
                     for job in receiver.into_iter() {
                         let Job(f) = job;
                         f();
                     }
-                    ()
                 })),
             });
         }
 
-        ret
+        Self {
+            _workers: works,
+            job_sender: Some(sender),
+            pool_inner,
+        }
     }
 
     /// Execute a new job in the thread pool.
@@ -129,10 +146,14 @@ impl ThreadPool {
     where
         F: FnOnce() + Send + 'static,
     {
+        let dropper = JobCountDropper::new(self.pool_inner.clone());
         self.job_sender
             .as_ref()
             .unwrap()
-            .send(Job(Box::new(f)))
+            .send(Job(Box::new(move || {
+                let _dropper = dropper;
+                f();
+            })))
             .unwrap();
     }
 
@@ -152,6 +173,8 @@ impl Drop for ThreadPool {
     /// then this function should panic too.
     /// 那么这个函数也应该发生panic。
     fn drop(&mut self) {
+        self.join();
+        self.job_sender.take();
         self._workers.drain(..);
     }
 }
