@@ -9,7 +9,7 @@ use std::collections::HashMap;
 pub struct Report {
     _id: usize,
     key: Option<String>, // None represents invalid request
-    // None 表示无效请求
+                         // None 表示无效请求
 }
 
 impl Report {

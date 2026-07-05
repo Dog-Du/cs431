@@ -72,7 +72,7 @@ impl<V> ConcurrentMap<u32, V> for ArrayMap<V> {
         match slot.compare_exchange(curr, Shared::null(), AcqRel, Acquire, guard) {
             Ok(_) => Ok(unsafe { curr.deref() }),
             Err(_) => Err(()), // already removed
-            // 已移除
+                               // 已移除
         }
     }
 }

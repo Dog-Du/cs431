@@ -20,7 +20,7 @@ pub struct RetiredSet<'s> {
     /// 是指向 `free::<T>` 的函数指针，其中 `T` 是该对象的类型。
     inner: Vec<Retired>,
     _marker: PhantomData<*const ()>, // !Send + !Sync
-    // !发送   !同步
+                                     // !发送   !同步
 }
 
 impl<'s> RetiredSet<'s> {
@@ -70,7 +70,7 @@ impl<'s> RetiredSet<'s> {
         /// * Subsumes the safety requirements of [`Box::from_raw`]. In particular, one must have
         /// * 包含 [`Box::from_raw`] 的安全要求。特别是，必须具备
         ///   unique ownership to `data`.
-        /// 将独特所有权转移到 `data`。
+        ///   将独特所有权转移到 `data`。
         ///
         /// [`Box::from_raw`]: https://doc.rust-lang.org/std/boxed/struct.Box.html#method.from_raw
         unsafe fn free<T>(data: *mut ()) {

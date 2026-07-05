@@ -50,7 +50,8 @@ impl CancellableTcpListener {
         // 先设置标志，然后与自身建立一个假的连接以唤醒被阻塞的监听器
         // in `accept`. Use `TcpListener::local_addr` and `TcpStream::connect`.
         // 在 `accept` 中。使用 `TcpListener::local_addr` 和 `TcpStream::connect`。
-        todo!()
+        self.is_canceled.store(true, Ordering::Release);
+        TcpStream::connect(self.inner.local_addr()?).map(|_| ())
     }
 
     /// Returns an iterator over the connections being received on this listener. The returned
@@ -67,7 +68,16 @@ impl Iterator for Incoming<'_> {
     /// Returns None if the listener is `cancel()`led.
     /// 如果监听器被 `cancel()` 屏蔽，则返回 None。
     fn next(&mut self) -> Option<Self::Item> {
+        if self.listener.is_canceled.load(Ordering::Acquire) {
+            return None;
+        }
+
         let stream = self.listener.inner.accept().map(|p| p.0);
-        todo!()
+
+        if self.listener.is_canceled.load(Ordering::Acquire) {
+            None
+        } else {
+            Some(stream)
+        }
     }
 }

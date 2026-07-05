@@ -7,6 +7,7 @@
 // 允许作业的 lint 检查。
 #![allow(dead_code, unused_variables, unused_imports, unused_mut)]
 #![deny(unsafe_op_in_unsafe_fn, warnings)]
+#![allow(clippy::doc_lazy_continuation)]
 
 mod adt;
 mod arc;
