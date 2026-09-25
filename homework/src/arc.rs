@@ -269,7 +269,13 @@ impl<T> Arc<T> {
     /// ```
     #[inline]
     pub fn get_mut(this: &mut Self) -> Option<&mut T> {
-        todo!()
+        // 只有当前分配没有其他所有者时，才能安全地把共享数据借用为 `&mut T`。
+        if this.is_unique() {
+            // SAFETY: `is_unique` 已确认不存在其他指向同一数据的 `Arc`。
+            Some(unsafe { Self::get_mut_unchecked(this) })
+        } else {
+            None
+        }
     }
 
     // Used in `get_mut` and `make_mut` to check if the given `Arc` is the unique reference to the
@@ -278,7 +284,9 @@ impl<T> Arc<T> {
     // 基础数据。
     #[inline]
     fn is_unique(&mut self) -> bool {
-        todo!()
+        // Acquire 不仅读取引用计数，还与其他线程最后一次 Release 减计数同步。
+        // 因此，当结果为 1 时，其他所有者此前对数据的访问都已发生在当前操作之前。
+        self.inner().count.load(Ordering::Acquire) == 1
     }
 
     /// Returns a mutable reference into the given `Arc` without any check.
@@ -344,7 +352,8 @@ impl<T> Arc<T> {
     /// ```
     #[inline]
     pub fn count(this: &Self) -> usize {
-        todo!()
+        // 计数值只是读取瞬间的快照；Acquire 还负责观察其他线程释放 Arc 前的操作。
+        this.inner().count.load(Ordering::Acquire)
     }
 
     #[inline]
@@ -406,7 +415,24 @@ impl<T> Arc<T> {
     /// ```
     #[inline]
     pub fn try_unwrap(this: Self) -> Result<T, Self> {
-        todo!()
+        // 原子地把唯一所有者的计数从 1 改为 0，避免“先检查、后修改”的竞态。
+        // Acquire 与先前所有者在 drop 中的 Release 操作同步。
+        if this
+            .inner()
+            .count
+            .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            return Err(this);
+        }
+
+        let ptr = this.ptr.as_ptr();
+        // 接下来由重建出的 Box 接管分配，不能再让 `this` 的 Drop 重复处理它。
+        mem::forget(this);
+
+        // SAFETY: CAS 成功说明我们独占该分配；指针最初来自 Box::leak，且只重建一次。
+        let inner = unsafe { Box::from_raw(ptr) };
+        Ok(inner.data)
     }
 }
 
@@ -444,7 +470,14 @@ impl<T: Clone> Arc<T> {
     /// ```
     #[inline]
     pub fn make_mut(this: &mut Self) -> &mut T {
-        todo!()
+        if !this.is_unique() {
+            // 仍有其他所有者时执行写时克隆，让当前 Arc 改为指向一份独立数据。
+            let cloned = (**this).clone();
+            *this = Self::new(cloned);
+        }
+
+        // SAFETY: 原本唯一，或已经换成刚创建且引用计数为 1 的新分配。
+        unsafe { Self::get_mut_unchecked(this) }
     }
 }
 
@@ -475,7 +508,11 @@ impl<T> Clone for Arc<T> {
     /// ```
     #[inline]
     fn clone(&self) -> Arc<T> {
-        todo!()
+        // 已持有 `&Arc`，所以分配在本次加计数期间必然有效；这里只需保证加法原子性。
+        let old_count = self.inner().count.fetch_add(1, Ordering::Relaxed);
+        assert!(old_count <= MAX_REFCOUNT, "Arc reference count overflow");
+
+        Self::from_inner(self.ptr)
     }
 }
 
@@ -518,7 +555,16 @@ impl<T> Drop for Arc<T> {
     /// drop(foo2);   // Prints "dropped!"
     /// ```
     fn drop(&mut self) {
-        todo!()
+        // Release 保证当前线程经由该 Arc 完成的访问发生在最终释放之前。
+        if self.inner().count.fetch_sub(1, Ordering::Release) != 1 {
+            return;
+        }
+
+        // 与所有先前的 Release 减计数同步，确保析构和释放发生在那些访问之后。
+        fence(Ordering::Acquire);
+
+        // SAFETY: 我们观察到旧计数为 1，因此这是最后一个 Arc；该指针来自 Box::leak。
+        unsafe { drop(Box::from_raw(self.ptr.as_ptr())) }
     }
 }
 
