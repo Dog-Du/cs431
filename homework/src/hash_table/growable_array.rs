@@ -200,7 +200,22 @@ impl<T> Segment<T> {
     /// - There should be no other references to possible children segments.
     /// - 不应有其他对可能的子段的引用。
     unsafe fn deallocate(self, height: usize) {
-        todo!()
+        debug_assert!(height > 0);
+
+        if height > 1 {
+            // 只有内部段的槽位才指向子段。叶子段的槽位指向 T，而 T 的所有权属于
+            // 使用 GrowableArray 的外层容器，因此这里绝不能释放那些元素。
+            let children = unsafe { ManuallyDrop::into_inner(self.children) };
+
+            for child in children {
+                // 此时 GrowableArray 已经被独占地析构，不会再有线程访问这些段，
+                // 所以可以把 Atomic 中的指针重新取回为 Owned。
+                if let Some(child) = unsafe { child.try_into_owned() } {
+                    // 子段比当前段低一层；递归时必须携带这个高度，才能正确解释 union。
+                    unsafe { child.into_box().deallocate(height - 1) };
+                }
+            }
+        }
     }
 }
 
@@ -214,7 +229,18 @@ impl<T> Drop for GrowableArray<T> {
     /// Deallocate segments, but not the individual elements.
     /// 释放段，但不要释放单个元素。
     fn drop(&mut self) {
-        todo!()
+        // 用空指针替换根，取得整棵段树的唯一所有权。
+        let root = mem::take(&mut self.root);
+
+        // SAFETY: drop 拿到了 &mut self，此时外部不能再通过数组取得新的段引用。
+        // GrowableArray 的使用约定也要求销毁前已经结束所有并发访问。
+        if let Some(root) = unsafe { root.try_into_owned() } {
+            let height = root.tag();
+            debug_assert!(height > 0);
+
+            // 根指针的 tag 记录树高；实际的递归释放由 Segment::deallocate 完成。
+            unsafe { root.into_box().deallocate(height) };
+        }
     }
 }
 
@@ -238,6 +264,81 @@ impl<T> GrowableArray<T> {
     /// necessary.
     /// 必要的。
     pub fn get<'g>(&self, index: usize, guard: &'g Guard) -> &'g Atomic<T> {
-        todo!()
+        const SEGMENT_SIZE: usize = 1 << SEGMENT_LOGSIZE;
+        const SEGMENT_MASK: usize = SEGMENT_SIZE - 1;
+
+        // 每层负责索引中的 SEGMENT_LOGSIZE 位。索引 0 也至少需要一个叶子段。
+        let significant_bits = usize::BITS as usize - index.leading_zeros() as usize;
+        let required_height = significant_bits.max(1).div_ceil(SEGMENT_LOGSIZE);
+
+        let mut root = self.root.load(SeqCst, guard);
+
+        // 根的 tag 保存当前树高。树不够高时，每次在旧根上方增加一层；旧根覆盖的
+        // 都是低位索引，所以它应当成为新根的第 0 个子段。
+        while root.tag() < required_height {
+            let old_height = root.tag();
+            let new_root = Segment::new();
+
+            if !root.is_null() {
+                // SAFETY: new_root 尚未发布，当前线程独占它，可以直接初始化 union 的
+                // children 视图。子指针不能携带根的高度 tag。
+                unsafe {
+                    new_root.children[0].store(root.with_tag(0), SeqCst);
+                }
+            }
+
+            match self.root.compare_exchange(
+                root,
+                new_root.with_tag(old_height + 1),
+                SeqCst,
+                SeqCst,
+                guard,
+            ) {
+                // compare_exchange 成功时返回刚发布的新根。
+                Ok(installed) => root = installed,
+                // 失败说明别的线程先扩展了根；e.new 会在离开此分支时自动释放。
+                Err(e) => root = e.current,
+            }
+        }
+
+        debug_assert!(!root.is_null());
+
+        let mut height = root.tag();
+        // 高度只属于根指针；进入树后，所有子指针都使用 tag 0。
+        let mut segment = root.with_tag(0);
+
+        while height > 1 {
+            // 从高到低，每层取索引中的一组 SEGMENT_LOGSIZE 位作为子段下标。
+            let shift = (height - 1) * SEGMENT_LOGSIZE;
+            let child_index = (index >> shift) & SEGMENT_MASK;
+
+            // SAFETY: height > 1 说明当前段是内部段，因此应按 children 解释 union。
+            let child_slot = unsafe { &segment.deref().children[child_index] };
+            let mut child = child_slot.load(SeqCst, guard);
+
+            if child.is_null() {
+                match child_slot.compare_exchange(
+                    Shared::null(),
+                    Segment::new(),
+                    SeqCst,
+                    SeqCst,
+                    guard,
+                ) {
+                    Ok(installed) => child = installed,
+                    // 多个线程可能同时创建同一个子段。失败者丢弃自己未发布的段，
+                    // 并沿用胜出线程已经安装的段。
+                    Err(e) => child = e.current,
+                }
+            }
+
+            debug_assert!(!child.is_null());
+            segment = child;
+            height -= 1;
+        }
+
+        // SAFETY: height == 1 说明当前段是叶子段，可以按 elements 解释 union。
+        // 段一经发布，在整个 GrowableArray 生命周期内都不会被移除，所以该引用
+        // 在 guard 所代表的访问期间保持有效。
+        unsafe { &segment.deref().elements[index & SEGMENT_MASK] }
     }
 }
