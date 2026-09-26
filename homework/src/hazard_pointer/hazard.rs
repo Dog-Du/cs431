@@ -1,11 +1,11 @@
 use core::ptr::{self, NonNull};
 #[cfg(not(feature = "check-loom"))]
-use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering, fence};
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::collections::HashSet;
 use std::fmt;
 
 #[cfg(feature = "check-loom")]
-use loom::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering, fence};
+use loom::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 use super::HAZARDS;
 
@@ -26,7 +26,10 @@ impl Shield {
     /// Store `pointer` to the hazard slot.
     /// 将 `pointer` 存入危险槽。
     pub fn set<T>(&self, pointer: *mut T) {
-        todo!()
+        // `Shield` 独占这个槽，因此这里不会与另一个写入者竞争；回收线程只会读取它。
+        unsafe { self.slot.as_ref() }
+            .hazard
+            .store(pointer.cast(), Ordering::SeqCst);
     }
 
     /// Clear the hazard slot.
@@ -43,7 +46,12 @@ impl Shield {
     /// then `Ok(())` means that shields set to `p` are validated.
     /// 那么 `Ok(())` 意味着设置为 `p` 的盾牌已被验证。
     pub fn validate<T>(pointer: *mut T, src: &AtomicPtr<T>) -> Result<(), *mut T> {
-        todo!()
+        let current = src.load(Ordering::SeqCst);
+        if current == pointer {
+            Ok(())
+        } else {
+            Err(current)
+        }
     }
 
     /// Try protecting `pointer` obtained from `src`. If not, returns the current value.
@@ -64,7 +72,7 @@ impl Shield {
     /// See `try_protect()`.
     /// 请参见 `try_protect()`。
     pub fn protect<T>(&self, src: &AtomicPtr<T>) -> *mut T {
-        let mut pointer = src.load(Ordering::Relaxed);
+        let mut pointer = src.load(Ordering::SeqCst);
         while let Err(new) = self.try_protect(pointer, src) {
             pointer = new;
             #[cfg(feature = "check-loom")]
@@ -84,7 +92,11 @@ impl Drop for Shield {
     /// Clear and release the ownership of the hazard slot.
     /// 清除并释放危险槽的所有权。
     fn drop(&mut self) {
-        todo!()
+        let slot = unsafe { self.slot.as_ref() };
+
+        // 必须先撤销保护，再开放槽位；否则新 Shield 可能复用槽位后被旧值覆盖。
+        slot.hazard.store(ptr::null_mut(), Ordering::SeqCst);
+        slot.active.store(false, Ordering::SeqCst);
     }
 }
 
@@ -125,7 +137,12 @@ struct HazardSlot {
 
 impl HazardSlot {
     fn new() -> Self {
-        todo!()
+        Self {
+            // 新槽由创建它的 Shield 直接占有，所以初始状态是 active。
+            active: AtomicBool::new(true),
+            hazard: AtomicPtr::new(ptr::null_mut()),
+            next: ptr::null(),
+        }
     }
 }
 
@@ -153,19 +170,60 @@ impl HazardBag {
     /// slot.
     /// 槽.
     fn acquire_slot(&self) -> &HazardSlot {
-        todo!()
+        if let Some(slot) = self.try_acquire_inactive() {
+            return slot;
+        }
+
+        // 没有空闲槽时创建一个新槽。CAS 失败只表示链表头被别人抢先更新，
+        // 新槽尚未发布，仍可安全地修改它的 `next` 后重试。
+        let new = Box::leak(Box::new(HazardSlot::new()));
+        let mut head = self.head.load(Ordering::SeqCst);
+        loop {
+            new.next = head;
+            match self
+                .head
+                .compare_exchange(head, new, Ordering::SeqCst, Ordering::SeqCst)
+            {
+                Ok(_) => return new,
+                Err(current) => head = current,
+            }
+        }
     }
 
     /// Find an inactive slot and activate it.
     /// 找到一个未使用的插槽并将其激活。
     fn try_acquire_inactive(&self) -> Option<&HazardSlot> {
-        todo!()
+        let mut current = self.head.load(Ordering::SeqCst);
+        while let Some(slot) = unsafe { current.as_ref() } {
+            // CAS 保证多个线程至多有一个能取得该槽的所有权。
+            if slot
+                .active
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                return Some(slot);
+            }
+            current = slot.next.cast_mut();
+        }
+        None
     }
 
     /// Returns all the hazards in the set.
     /// 返回集合中的所有危险。
     pub fn all_hazards(&self) -> HashSet<*mut ()> {
-        todo!()
+        let mut hazards = HashSet::new();
+        let mut current = self.head.load(Ordering::SeqCst);
+
+        // 槽链表在 HazardBag 存活期间只会增长，已发布的槽不会被移除，
+        // 因此从 `head` 出发读取不可变的 `next` 是安全的。
+        while let Some(slot) = unsafe { current.as_ref() } {
+            let hazard = slot.hazard.load(Ordering::SeqCst);
+            if !hazard.is_null() {
+                hazards.insert(hazard);
+            }
+            current = slot.next.cast_mut();
+        }
+        hazards
     }
 }
 
@@ -179,7 +237,13 @@ impl Drop for HazardBag {
     /// Frees all slots.
     /// 释放所有槽位。
     fn drop(&mut self) {
-        todo!()
+        let mut current = self.head.load(Ordering::SeqCst);
+        while !current.is_null() {
+            // `drop(&mut self)` 独占 HazardBag；按 API 的使用约定，此时也不再有 Shield。
+            // 每个节点都来自 `Box::leak`，故可逐个恢复为 Box 并释放。
+            let slot = unsafe { Box::from_raw(current) };
+            current = slot.next.cast_mut();
+        }
     }
 }
 
