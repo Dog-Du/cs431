@@ -78,7 +78,26 @@ impl Request {
     /// only enqueueing of this request and behavior.
     /// 仅对该请求和行为进行排队。
     unsafe fn start_enqueue(&self, behavior: *const Behavior) {
-        todo!()
+        // 先把当前请求原子地追加到目标 cown 的队尾。请求存放在 Behavior 的 Vec 中，
+        // 在整个排队和执行期间地址稳定，因此可以安全地把其地址发布到 last。
+        let this = ptr::from_ref(self).cast_mut();
+        let previous = self.target.last().swap(this, SeqCst);
+
+        if previous.is_null() {
+            // 队列原先为空，该 cown 不会给当前行为增加前驱依赖。
+            unsafe { Behavior::resolve_one(behavior) };
+            return;
+        }
+
+        // 必须等前驱完成它的第一阶段，才能把自己接到前驱后面；否则多个 cown 上的
+        // 入队结果可能无法表现为一次原子操作。所有行为按同一地址顺序入队，所以
+        // 这里的等待不会形成环。
+        while !unsafe { (*previous).scheduled.load(SeqCst) } {
+            hint::spin_loop();
+        }
+        unsafe {
+            (*previous).next.store(behavior.cast_mut(), SeqCst);
+        }
     }
 
     /// Finish the second phase of the 2PL enqueue operation.
@@ -93,7 +112,8 @@ impl Request {
     /// All enqueues for smaller requests on this cown must have been completed.
     /// 此 cown 上较小请求的所有入队操作必须已完成。
     unsafe fn finish_enqueue(&self) {
-        todo!()
+        // 发布第一阶段已经完整结束，允许后继行为继续追加其请求。
+        self.scheduled.store(true, SeqCst);
     }
 
     /// Release the cown to the next behavior.
@@ -110,7 +130,29 @@ impl Request {
     /// `self` must have been actually completed.
     /// `self` 必须已经实际完成。
     unsafe fn release(&self) {
-        todo!()
+        let mut next = self.next.load(SeqCst);
+
+        if next.is_null() {
+            let this = ptr::from_ref(self).cast_mut();
+            // 若尾指针仍指向自己，说明确实没有后继，可以直接把 cown 置为空闲。
+            if self
+                .target
+                .last()
+                .compare_exchange(this, ptr::null_mut(), SeqCst, SeqCst)
+                .is_ok()
+            {
+                return;
+            }
+
+            // CAS 失败表示后继已经替换了 last，但可能尚未来得及写入 next。
+            // 等待这次 MCS 队列握手完成后再通知后继，避免漏掉唤醒。
+            while next.is_null() {
+                hint::spin_loop();
+                next = self.next.load(SeqCst);
+            }
+        }
+
+        unsafe { Behavior::resolve_one(next) };
     }
 }
 
@@ -223,7 +265,27 @@ impl Behavior {
     /// This ensures that the overall effect of the enqueue is atomic.
     /// 这确保了入队操作的整体效果是原子的。
     fn schedule(self) {
-        todo!()
+        let mut this = Box::new(self);
+
+        // 所有调度者都按 cown 地址的全局顺序执行第一阶段，因此 scheduled 上的等待
+        // 不可能构成环，也就不会因同时申请多个 cown 而死锁。
+        this.requests.sort_unstable();
+
+        // 请求队列和其他线程都会保存指向 Behavior/Request 的裸指针。转成裸指针后，
+        // 对象会一直留在堆上的固定地址，直到行为执行并释放所有请求后才重建 Box。
+        let this = Box::into_raw(this);
+        unsafe {
+            for request in &(*this).requests {
+                request.start_enqueue(this);
+            }
+            for request in &(*this).requests {
+                request.finish_enqueue();
+            }
+
+            // count 额外包含一个“终结哨兵”。在第二阶段结束后才消去它，保证即使
+            // 所有 cown 都空闲（或请求集合为空），thunk 也不会过早执行。
+            Self::resolve_one(this);
+        }
     }
 
     /// Resolves a single outstanding request for `this`.
@@ -240,7 +302,22 @@ impl Behavior {
     /// `this` must be a valid behavior.
     /// `this` 必须是一种有效的行为。
     unsafe fn resolve_one(this: *const Self) {
-        todo!()
+        if unsafe { (*this).count.fetch_sub(1, SeqCst) } != 1 {
+            return;
+        }
+
+        // 计数归零后，不会再有前驱访问 Behavior；此处重新取得 Box 的唯一所有权，
+        // 并把它交给 Rayon。requests 必须保留到 thunk 结束，才能安全通知所有后继。
+        let this = unsafe { Box::from_raw(this.cast_mut()) };
+        rayon::spawn(move || {
+            let Behavior {
+                thunk, requests, ..
+            } = *this;
+            thunk();
+            for request in &requests {
+                unsafe { request.release() };
+            }
+        });
     }
 }
 
@@ -254,15 +331,25 @@ impl fmt::Debug for Behavior {
     }
 }
 
-// TODO: terminator?
-// 待办事项：终结者？
 impl Behavior {
     fn new<C, F>(cowns: C, f: F) -> Behavior
     where
         C: CownPtrs + Send + 'static,
         F: for<'l> Fn(C::CownRefs<'l>) + Send + 'static,
     {
-        todo!()
+        let requests = cowns.requests();
+        // 多出来的 1 是调度阶段持有的终结哨兵，参见 schedule 的最后一次 resolve_one。
+        let count = AtomicUsize::new(requests.len() + 1);
+        let thunk = Box::new(move || {
+            // 只有所有请求都成为各自队首时 thunk 才会运行，因此此时独占这些值。
+            f(unsafe { cowns.get_mut() });
+        });
+
+        Behavior {
+            thunk,
+            count,
+            requests,
+        }
     }
 }
 
