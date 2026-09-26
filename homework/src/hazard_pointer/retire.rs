@@ -41,7 +41,7 @@ impl<'s> RetiredSet<'s> {
     }
 
     /// Retires a pointer.
-    /// 释放指针。
+    /// 将指针标记为“已退役”，等待后续安全回收。
     ///
     /// # Safety
     /// # 安全
@@ -77,7 +77,14 @@ impl<'s> RetiredSet<'s> {
             drop(unsafe { Box::from_raw(data.cast::<T>()) })
         }
 
-        todo!()
+        // 将指针擦除成 `*mut ()`，同时保存对应类型的析构函数。
+        // 这样一个 Vec 就能存放不同类型的已退役对象。
+        self.inner.push((pointer.cast(), free::<T>));
+
+        // 批量扫描，避免每次 retire 都遍历全局 hazard slots。
+        if self.inner.len() >= Self::THRESHOLD {
+            self.collect();
+        }
     }
 
     /// Free the pointers that are `retire`d by the current thread and not `protect`ed by any other
@@ -85,7 +92,23 @@ impl<'s> RetiredSet<'s> {
     /// threads.
     /// 线程。
     pub fn collect(&mut self) {
-        todo!()
+        // 将“从共享结构中摘除节点”排在扫描 hazard pointers 之前。
+        // 配合 Shield 端的 SeqCst 操作，保证保护者与回收者不会同时“看漏”对方。
+        fence(Ordering::SeqCst);
+        let hazards = self.hazards.all_hazards();
+
+        self.inner.retain(|retired| {
+            let &(pointer, free) = retired;
+            if hazards.contains(&pointer) {
+                // 仍有 Shield 保护该地址，保留到下次扫描。
+                true
+            } else {
+                // SAFETY: `retire` 要求调用者传入唯一所有且尚未回收的指针；
+                // 该地址也不在 hazard 快照中，所以现在可恢复 Box 并析构。
+                unsafe { free(pointer) };
+                false
+            }
+        });
     }
 }
 
